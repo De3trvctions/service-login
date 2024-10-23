@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"standard-library/consts"
 	"standard-library/models/dto"
+	"standard-library/pagex"
 	"standard-library/redis"
 	"standard-library/utility"
 	"time"
@@ -96,14 +97,17 @@ func (acc *Account) List(req Account) (accountList []AccountInfo, errCode int, e
 	return
 }
 
-func (acc *Account) Info(req dto.ReqAccountDetail) (account AccountInfo, errCode int64, err error) {
-	qb, _ := orm.NewQueryBuilder("mysql")
+func (acc *Account) Info(req dto.ReqAccountDetail) (account AccountInfo, pagination pagex.Pagination, errCode int64, err error) {
+	qbCount, _ := orm.NewQueryBuilder("mysql")
+	qbSelect, _ := orm.NewQueryBuilder("mysql")
+	qbFrom, _ := orm.NewQueryBuilder("mysql")
 	qbWhere, _ := orm.NewQueryBuilder("mysql")
 	var args []interface{}
 	db := utility.NewDB()
 
-	qb.Select("*")
-	qb.From(acc.TableName())
+	qbCount.Select("COUNT(*) AS count")
+	qbSelect.Select("*")
+	qbFrom.From(acc.TableName())
 	qbWhere.Where("1=1")
 
 	if req.AccountId > 0 {
@@ -126,7 +130,19 @@ func (acc *Account) Info(req dto.ReqAccountDetail) (account AccountInfo, errCode
 		args = append(args, req.Email)
 	}
 
-	sql := qb.String() + " " + qbWhere.String()
+	var count int64
+	countSql := qbCount.String() + " " + qbFrom.String() + " " + qbWhere.String()
+	err = db.Raw(countSql).SetArgs(args).QueryRow(&count)
+	if err != nil {
+		errCode = consts.DB_GET_FAILED
+		logs.Error("[Account][SelfInfo] Count error:", countSql, args, err)
+	}
+
+	pagination = pagination.NewPagination(req.Page, req.PageSize, count)
+
+	qbWhere.Limit(int(req.PageSize)).Offset(int(pagination.Offset()))
+
+	sql := qbSelect.String() + " " + qbFrom.String() + " " + qbWhere.String()
 	err = db.Raw(sql).SetArgs(args).QueryRow(&account)
 	if err != nil {
 		errCode = consts.DB_GET_FAILED
