@@ -59,45 +59,7 @@ func (acc *Account) GetHashPassword(password string) (hashPassword string) {
 	return hex.EncodeToString(hash[:])
 }
 
-func (acc *Account) List(req Account) (accountList []AccountInfo, errCode int, err error) {
-	qb, _ := orm.NewQueryBuilder("mysql")
-	db := utility.NewDB()
-
-	qb.Select("*")
-	qb.From(acc.TableName())
-	qb.Where("1=1")
-	var args []interface{}
-
-	if req.Id > 0 {
-		qb.And("id = ?")
-		args = append(args, req.Id)
-	}
-
-	if req.Username != "" {
-		qb.And("username = ?")
-		args = append(args, req.Username)
-	}
-
-	if req.CreateTime > 0 {
-		qb.And("create_time > ?")
-		args = append(args, req.CreateTime)
-	}
-
-	if req.Email != "" {
-		qb.And("email > ?")
-		args = append(args, req.Email)
-	}
-
-	sql := qb.String()
-	_, err = db.Raw(sql).SetArgs(args).QueryRows(&accountList)
-	if err != nil {
-		logs.Error("[Account][List] Query error:", sql, args, err)
-	}
-
-	return
-}
-
-func (acc *Account) Info(req dto.ReqAccountDetail) (account AccountInfo, pagination pagex.Pagination, errCode int64, err error) {
+func (acc *Account) List(req dto.ReqAccountList) (accountList []AccountInfo, pagination pagex.Pagination, errCode int, err error) {
 	qbCount, _ := orm.NewQueryBuilder("mysql")
 	qbSelect, _ := orm.NewQueryBuilder("mysql")
 	qbFrom, _ := orm.NewQueryBuilder("mysql")
@@ -106,6 +68,57 @@ func (acc *Account) Info(req dto.ReqAccountDetail) (account AccountInfo, paginat
 	db := utility.NewDB()
 
 	qbCount.Select("COUNT(*) AS count")
+	qbSelect.Select("*")
+	qbFrom.From(acc.TableName())
+	qbWhere.Where("1=1")
+
+	if req.Id > 0 {
+		qbWhere.And("id = ?")
+		args = append(args, req.Id)
+	}
+
+	if req.Username != "" {
+		qbWhere.And("username = ?")
+		args = append(args, req.Username)
+	}
+
+	if req.CreateTime > 0 {
+		qbWhere.And("create_time > ?")
+		args = append(args, req.CreateTime)
+	}
+
+	if req.Email != "" {
+		qbWhere.And("email > ?")
+		args = append(args, req.Email)
+	}
+
+	var count int64
+	countSql := qbCount.String() + " " + qbFrom.String() + " " + qbWhere.String()
+	err = db.Raw(countSql).SetArgs(args).QueryRow(&count)
+	if err != nil {
+		errCode = consts.DB_GET_FAILED
+		logs.Error("[Account][List] Count error:", countSql, args, err)
+	}
+
+	pagination = pagination.NewPagination(req.Page, req.PageSize, count)
+	qbWhere.Limit(int(req.PageSize)).Offset(int(pagination.Offset()))
+
+	sql := qbSelect.String() + " " + qbFrom.String() + " " + qbWhere.String()
+	_, err = db.Raw(sql).SetArgs(args).QueryRows(&accountList)
+	if err != nil {
+		logs.Error("[Account][List] Query error:", sql, args, err)
+	}
+
+	return
+}
+
+func (acc *Account) Info(req dto.ReqAccountDetail) (account AccountInfo, errCode int64, err error) {
+	qbSelect, _ := orm.NewQueryBuilder("mysql")
+	qbFrom, _ := orm.NewQueryBuilder("mysql")
+	qbWhere, _ := orm.NewQueryBuilder("mysql")
+	var args []interface{}
+	db := utility.NewDB()
+
 	qbSelect.Select("*")
 	qbFrom.From(acc.TableName())
 	qbWhere.Where("1=1")
@@ -129,18 +142,6 @@ func (acc *Account) Info(req dto.ReqAccountDetail) (account AccountInfo, paginat
 		qbWhere.And("email > ?")
 		args = append(args, req.Email)
 	}
-
-	var count int64
-	countSql := qbCount.String() + " " + qbFrom.String() + " " + qbWhere.String()
-	err = db.Raw(countSql).SetArgs(args).QueryRow(&count)
-	if err != nil {
-		errCode = consts.DB_GET_FAILED
-		logs.Error("[Account][SelfInfo] Count error:", countSql, args, err)
-	}
-
-	pagination = pagination.NewPagination(req.Page, req.PageSize, count)
-
-	qbWhere.Limit(int(req.PageSize)).Offset(int(pagination.Offset()))
 
 	sql := qbSelect.String() + " " + qbFrom.String() + " " + qbWhere.String()
 	err = db.Raw(sql).SetArgs(args).QueryRow(&account)
