@@ -23,7 +23,7 @@ import (
 )
 
 type LoginController struct {
-	login.UnimplementedActivityChangeLogServiceServer
+	login.UnimplementedUserLoginServiceServer
 	BaseController
 }
 
